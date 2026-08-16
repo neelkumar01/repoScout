@@ -7,8 +7,7 @@ from langchain.tools import tool
 from langchain_groq import ChatGroq
 
 from langchain.agents.middleware import (
-    ModelCallLimitMiddleware,
-    ToolCallLimitMiddleware,
+    ModelCallLimitMiddleware
 )
 
 
@@ -30,10 +29,40 @@ class InvestigationResult(BaseModel):
 
 
 def build_tools(github):
+    seen_calls = set()
+
+    def repeated(tool_name, args):
+        key = (
+            tool_name,
+            json.dumps(args, sort_keys=True),
+        )
+
+        if key in seen_calls:
+            return True
+
+        seen_calls.add(key)
+        return False
+
+    def repeat_warning(tool_name):
+        return json.dumps({
+            "warning": (
+                f"The exact {tool_name} call was already made. "
+                "Use the evidence already collected, try a different "
+                "relevant tool, or finish the investigation."
+            )
+        })
 
     @tool
     def get_issue(issue_number: int) -> str:
         """Read a GitHub issue including title, body, labels, author, and URL."""
+
+        args = {
+            "issue_number": issue_number
+        }
+
+        if repeated("get_issue", args):
+            return repeat_warning("get_issue")
+
         return json.dumps(
             github.get_issue(issue_number),
             indent=2,
@@ -42,14 +71,39 @@ def build_tools(github):
     @tool
     def get_issue_comments(issue_number: int) -> str:
         """Read comments from a GitHub issue for additional context."""
+
+        args = {
+            "issue_number": issue_number
+        }
+
+        if repeated(
+            "get_issue_comments",
+            args,
+        ):
+            return repeat_warning(
+                "get_issue_comments"
+            )
+
         return json.dumps(
-            github.get_issue_comments(issue_number),
+            github.get_issue_comments(
+                issue_number
+            ),
             indent=2,
         )
 
     @tool
     def search_code(query: str) -> str:
         """Search repository code for a keyword, symbol, function, or error message."""
+
+        args = {
+            "query": query
+        }
+
+        if repeated("search_code", args):
+            return repeat_warning(
+                "search_code"
+            )
+
         return json.dumps(
             github.search_code(query),
             indent=2,
@@ -61,40 +115,118 @@ def build_tools(github):
         ref: str | None = None,
     ) -> str:
         """Read one repository file, optionally at a branch, tag, or commit."""
+
+        args = {
+            "path": path,
+            "ref": ref,
+        }
+
+        if repeated("read_file", args):
+            return repeat_warning(
+                "read_file"
+            )
+
         return json.dumps(
-            github.read_file(path, ref),
+            github.read_file(
+                path,
+                ref,
+            ),
             indent=2,
         )
 
     @tool
     def get_file_commits(path: str) -> str:
         """Inspect recent commits that changed a repository file."""
+
+        args = {
+            "path": path
+        }
+
+        if repeated(
+            "get_file_commits",
+            args,
+        ):
+            return repeat_warning(
+                "get_file_commits"
+            )
+
         return json.dumps(
             github.get_file_commits(path),
             indent=2,
         )
 
     @tool
-    def get_workflow_runs(limit: int = 10) -> str:
+    def get_workflow_runs(
+        limit: int = 10,
+    ) -> str:
         """List recent completed GitHub Actions workflow runs."""
+
+        args = {
+            "limit": limit
+        }
+
+        if repeated(
+            "get_workflow_runs",
+            args,
+        ):
+            return repeat_warning(
+                "get_workflow_runs"
+            )
+
         return json.dumps(
-            github.get_workflow_runs(limit=limit),
+            github.get_workflow_runs(
+                limit=limit
+            ),
             indent=2,
         )
 
     @tool
-    def get_workflow_jobs(run_id: int) -> str:
+    def get_workflow_jobs(
+        run_id: int,
+    ) -> str:
         """Inspect jobs and step results for a GitHub Actions workflow run."""
+
+        args = {
+            "run_id": run_id
+        }
+
+        if repeated(
+            "get_workflow_jobs",
+            args,
+        ):
+            return repeat_warning(
+                "get_workflow_jobs"
+            )
+
         return json.dumps(
-            github.get_workflow_jobs(run_id),
+            github.get_workflow_jobs(
+                run_id
+            ),
             indent=2,
         )
 
     @tool
-    def get_job_log(job_id: int) -> str:
+    def get_job_log(
+        job_id: int,
+    ) -> str:
         """Read filtered failure evidence from a GitHub Actions job log."""
+
+        args = {
+            "job_id": job_id
+        }
+
+        if repeated(
+            "get_job_log",
+            args,
+        ):
+            return repeat_warning(
+                "get_job_log"
+            )
+
         return json.dumps(
-            github.get_job_log(job_id),
+            github.get_job_log(
+                job_id
+            ),
             indent=2,
         )
 
@@ -321,6 +453,96 @@ Investigation:
 
     return InvestigationResult.model_validate(data)
 
+def finish_investigation(
+    model_name,
+    messages,
+    hit_tool_limit=False
+):
+    model = ChatGroq(
+        model=model_name,
+        temperature=0,
+        max_retries=2,
+    )
+
+    evidence_parts = []
+
+    for message in messages:
+        message_type = getattr(
+            message,
+            "type",
+            "message",
+        )
+
+        name = getattr(
+            message,
+            "name",
+            "",
+        )
+
+        content = str(
+            getattr(
+                message,
+                "content",
+                "",
+            )
+        )
+
+        if not content:
+            continue
+
+        evidence_parts.append(
+            f"{message_type} {name}:\n"
+            f"{content[:6000]}"
+        )
+
+    evidence_text = "\n\n".join(
+        evidence_parts
+    )
+
+    evidence_text = evidence_text[-50000:]
+
+    budget_note = ""
+
+    if hit_tool_limit:
+        budget_note = """
+The investigation reached its tool-call budget.
+Use the available evidence only.
+Do not pretend the investigation was complete.
+Clearly mention any remaining uncertainty.
+"""
+
+    prompt = f"""
+You are finishing a RepoScout investigation.
+
+Using ONLY the evidence collected below, produce
+the final technical investigation.
+
+Do not request more tools.
+Do not invent missing repository facts.
+Do not treat possibilities as proven causes.
+
+{budget_note}
+
+Include:
+- issue summary
+- likely root cause
+- confidence
+- explanation
+- supporting evidence and URLs
+- suggested next steps
+- limitations
+
+If evidence is insufficient, say so clearly.
+
+Collected investigation evidence:
+
+{evidence_text}
+"""
+
+    response = model.invoke(prompt)
+
+    return response.content
+
 def investigate_issue(
     github,
     repo,
@@ -342,12 +564,8 @@ def investigate_issue(
         system_prompt=SYSTEM_PROMPT,
         middleware=[
             ModelCallLimitMiddleware(
-                run_limit=10,
-                exit_behavior="end",
-            ),
-            ToolCallLimitMiddleware(
-                run_limit=8,
-                exit_behavior="end",
+                run_limit=15,
+                exit_behavior="error",
             ),
         ],
     )
@@ -361,11 +579,13 @@ Begin with get_issue.
 Use ONLY the registered RepoScout tools.
 Do not invent tools or tool namespaces.
 
-Gather the minimum evidence necessary and produce
-an evidence-backed technical investigation.
+Gather the minimum evidence necessary for an
+evidence-backed technical investigation.
 """
 
-    result = agent.invoke(
+    latest_messages = []
+    hit_tool_limit = False
+    for state in agent.stream(
         {
             "messages": [
                 {
@@ -375,20 +595,39 @@ an evidence-backed technical investigation.
             ]
         },
         config={
-            "recursion_limit": max_steps * 5
+            "recursion_limit": 50,
         },
-    )
-
-    final_message = result["messages"][-1]
-    investigation_text = final_message.content
-
-    if isinstance(investigation_text, list):
-        investigation_text = "\n".join(
-            part.get("text", "")
-            if isinstance(part, dict)
-            else str(part)
-            for part in investigation_text
+        stream_mode="values",
+    ):
+        latest_messages = state.get(
+            "messages",
+            latest_messages,
         )
+
+        tool_calls = sum(
+            1
+            for message in latest_messages
+            if getattr(
+                message,
+                "type",
+                None,
+            ) == "tool"
+        )
+
+        if tool_calls >= max_steps:
+            hit_tool_limit = True
+            break
+
+    if not latest_messages:
+        raise RuntimeError(
+            "Agent returned no investigation evidence."
+        )
+
+    investigation_text = finish_investigation(
+        model_name=model_name,
+        messages=latest_messages,
+        hit_tool_limit=hit_tool_limit
+    )
 
     return structure_investigation(
         model_name=model_name,
