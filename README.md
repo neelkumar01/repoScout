@@ -15,6 +15,8 @@ Depending on the problem it can:
 > [!IMPORTANT]
 > Supporting repository for testing this tool - [RepoScout Test Repo](https://github.com/neelkumar01/repoScout-testing)
 
+<hr>
+
 ### How it works?
 
 ```mermaid
@@ -40,11 +42,15 @@ flowchart TD
     K --> L[Markdown Report]
 ```
 
+<hr>
+
 ### Results 👍
 
 The results were really encouraging. The agent was able to choose different investigation paths, connect evidence from multiple GitHub sources, identify likely root causes and clearly report uncertainty when the available evidence was limited 
 
 Check all the agentic AI generated investigation reports here: [REPORTS](./reports)
+
+<hr>
 
 ### Why RepoScout?
 
@@ -61,6 +67,8 @@ A developer may need to:
 
 RepoScout explores whether an AI agent can handle this initial investigation using tools while keeping the final result grounded in repository evidence
 
+<hr>
+
 ### Available Tools
 
 The agent currently has tools for:
@@ -76,6 +84,8 @@ The agent currently has tools for:
 
 > [!NOTE]
 > All repository operations are read only
+
+<hr>
 
 ### Problems I Faced 
 
@@ -124,6 +134,8 @@ Different issues need different evidence. A simple code bug should not trigger C
 - Confidence and uncertainty
 
 In one vague performance issue the agent initially treated a possible code problem as the confirmed cause without runtime evidence. I added clearer confidence rules so possible causes are separated from proven root causes and missing evidence is explicitly reported
+
+<hr>
 
 ### Limitations:
 
