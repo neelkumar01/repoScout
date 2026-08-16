@@ -40,6 +40,12 @@ flowchart TD
     K --> L[Markdown Report]
 ```
 
+### Results 👍
+
+The results were really encouraging. The agent was able to choose different investigation paths, connect evidence from multiple GitHub sources, identify likely root causes and clearly report uncertainty when the available evidence was limited 
+
+Check all the agentic AI generated investigation reports here: [REPORTS](./reports)
+
 ### Why RepoScout?
 
 Understanding a GitHub issue often involves more than reading its description
@@ -106,6 +112,18 @@ LLM generated search queries are not always valid GitHub code search queries. Se
 During testing the agent initially treated a possible performance cause as a confirmed root cause despite having no runtime metrics
 
 The investigation instructions were improved so that code smells are treated as hypotheses rather than proof especially for intermittent and performance related problems
+
+- Agent loops and stopping
+
+During some investigations the agent kept calling tools even after enough evidence was available and eventually reached the recursion limit. I improved the investigation prompt with clearer tool selection and stopping rules so the agent knows when it has enough evidence to finish
+
+- Choosing the right investigation path
+
+Different issues need different evidence. A simple code bug should not trigger CI analysis while a regression may require commit history and a vague issue may require reading comments first. The agent instructions were refined so it chooses tools based on the type of issue instead of following the same path every time
+
+- Confidence and uncertainty
+
+In one vague performance issue the agent initially treated a possible code problem as the confirmed cause without runtime evidence. I added clearer confidence rules so possible causes are separated from proven root causes and missing evidence is explicitly reported
 
 ### Limitations:
 
