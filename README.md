@@ -117,15 +117,9 @@ This keeps tool based investigation separate from final report formatting
 
 LLM generated search queries are not always valid GitHub code search queries. Search failures are handled so that one bad query does not necessarily end the entire investigation
 
-- Confidence calibration
-
-During testing the agent initially treated a possible performance cause as a confirmed root cause despite having no runtime metrics
-
-The investigation instructions were improved so that code smells are treated as hypotheses rather than proof especially for intermittent and performance related problems
-
 - Agent loops and stopping
 
-During some investigations the agent kept calling tools even after enough evidence was available and eventually reached the recursion limit. I improved the investigation prompt with clearer tool selection and stopping rules so the agent knows when it has enough evidence to finish
+I added duplicate tool call protection and a fixed investigation budget. If the budget is reached, RepoScout stops using tools and finishes the analysis using the evidence already collected
 
 - Choosing the right investigation path
 
